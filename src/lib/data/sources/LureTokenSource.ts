@@ -1,139 +1,69 @@
+import { TokenData } from "@/types/token";
 import { IDataSource } from "@/lib/db/models/DataSource";
-import { MongoClient, WithId, Document } from "mongodb";
-
-interface TokenDocument extends WithId<Document> {
-  tokenAddress: string;
-  tokenName: string;
-  tokenSymbol: string;
-  timestamp: Date;
-  nameAnalysis?: {
-    components: string[];
-    trendingConnections: {
-      relatedTokens: string[];
-      narrativeAlignment: string;
-      timing: string;
-    };
-  };
-  marketMetrics?: {
-    priceAnalysis?: {
-      current?: string;
-    };
-    tradingActivity?: {
-      volume?: {
-        "24hVolumeUSD": string;
-      };
-    };
-  };
-  tldr?: {
-    categories: string;
-    sentiment: string;
-    riskLevel: string;
-    volumeLevel: string;
-    priceDirection: string;
-    socialPresence: string;
-  };
-  relevantEvents?: string[];
-}
+import { MongoClient } from "mongodb";
 
 export class LureTokenSource {
   private mongoUri: string;
 
   constructor() {
-    this.mongoUri = process.env.MONGODB_URI || "";
-    if (!this.mongoUri) {
-      console.warn("No MongoDB URI provided");
-    }
+    this.mongoUri = process.env.MONGODB_URI || "mongodb://localhost:27017/lure";
   }
 
-  async fetchLatestTokens(limit: number = 1) {
-    console.log(
-      `[LureTokenSource] Starting fetchLatestTokens with limit: ${limit}`
-    );
-
-    if (!this.mongoUri) {
-      throw new Error("MongoDB URI is required");
-    }
-
-    const client = new MongoClient(this.mongoUri, {
-      family: 4,
-      serverSelectionTimeoutMS: 5000,
-    });
-
+  async fetchLatestTokens(): Promise<TokenData[]> {
     try {
-      await client.connect();
-      console.log("[LureTokenSource] Connected successfully to MongoDB");
+      console.log("[LureTokenSource] Connecting to MongoDB...");
+      const client = await MongoClient.connect(this.mongoUri);
+      const db = client.db();
 
-      const db = client.db("lure");
-      const collection = db.collection("lureTokens");
-
-      console.log("[LureTokenSource] Executing find query...");
-      const tokens = await collection
+      // Fetch the latest entries from the lureTokens collection
+      const tokens = await db
+        .collection("lureTokens")
         .find()
         .sort({ timestamp: -1 })
-        .limit(limit)
+        .limit(10)
         .toArray();
 
-      console.log(
-        `[LureTokenSource] Query complete. Found ${tokens.length} tokens`
-      );
+      console.log("[LureTokenSource] Fetched tokens:", tokens);
 
-      if (tokens.length === 0) {
-        console.log("[LureTokenSource] No tokens found in collection");
+      await client.close();
+
+      if (!tokens.length) {
+        console.log("[LureTokenSource] No tokens found in database");
         return [];
       }
 
-      console.log(
-        "[LureTokenSource] First token raw data:",
-        JSON.stringify(tokens[0], null, 2)
-      );
-
-      const mappedTokens = tokens.map((token) => {
-        const tokenDoc = token as unknown as TokenDocument;
-        const mapped = {
-          tokenSymbol: tokenDoc.tokenSymbol,
-          tokenName: tokenDoc.tokenName,
-          marketCap: tokenDoc.marketMetrics?.priceAnalysis?.current,
-          price: tokenDoc.marketMetrics?.priceAnalysis?.current?.replace(
-            "$",
-            ""
-          ),
-          volume24h:
-            tokenDoc.marketMetrics?.tradingActivity?.volume?.["24hVolumeUSD"],
-          sentiment: tokenDoc.tldr?.sentiment || "neutral",
-          events: tokenDoc.relevantEvents || [],
-          narrativeAlignment:
-            tokenDoc.nameAnalysis?.trendingConnections?.narrativeAlignment,
-          timing: tokenDoc.nameAnalysis?.trendingConnections?.timing,
-          categories: tokenDoc.tldr?.categories,
-          riskLevel: tokenDoc.tldr?.riskLevel,
-          timestamp: tokenDoc.timestamp,
-        };
-        console.log(
-          "[LureTokenSource] Mapped token data:",
-          JSON.stringify(mapped, null, 2)
-        );
-        return mapped;
-      });
-
-      return mappedTokens;
+      // Map the MongoDB documents to TokenData format
+      return tokens.map((token) => ({
+        tokenSymbol: token.tokenSymbol,
+        tokenName: token.tokenName,
+        price: token.price,
+        volume24h: token.volume24h,
+        marketCap: token.marketCap,
+        change24h: token.change24h,
+        holders: token.holders,
+        sentiment: token.sentiment,
+        events: token.events || [],
+        narrativeAlignment: token.narrativeAlignment,
+        timing: token.timing,
+        categories: token.categories,
+        riskLevel: token.riskLevel,
+        analysis: token.analysis || {},
+        tldr: token.tldr,
+      }));
     } catch (error) {
-      console.error("Error fetching tokens:", error);
+      console.error("[LureTokenSource] Error fetching tokens:", error);
       throw error;
-    } finally {
-      await client.close();
     }
   }
 
-  async createDataSource(): Promise<IDataSource> {
+  createDataSource(): IDataSource {
     return {
-      name: "lure-tokens",
+      name: "lure",
       type: "api",
-      url: "internal://lure-tokens",
-      method: "GET",
-      isActive: true,
+      url: this.mongoUri,
       metadata: {
-        description: "Lure token analysis data",
-        updateFrequency: "5m",
+        description: "Lure token data source",
+        version: "1.0.0",
       },
     };
   }
