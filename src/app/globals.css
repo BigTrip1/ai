@@ -3,19 +3,128 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --primary-glow: #00ff9580;
+  --secondary-glow: #ff6b0080;
+  --background-dark: #0a0a0a;
+  --card-bg: #141414;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--background-dark);
+  color: #ffffff;
+  min-height: 100vh;
+}
+
+.glow-text-primary {
+  text-shadow: 0 0 10px var(--primary-glow);
+}
+
+.glow-text-secondary {
+  text-shadow: 0 0 10px var(--secondary-glow);
+}
+
+.glow-border-primary {
+  box-shadow: 0 0 15px -3px var(--primary-glow);
+}
+
+.glow-border-secondary {
+  box-shadow: 0 0 15px -3px var(--secondary-glow);
+}
+
+.dashboard-card {
+  background: var(--card-bg);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(12px);
+  transition: all 0.3s ease;
+}
+
+.dashboard-card:hover {
+  border-color: rgba(0, 255, 149, 0.5);
+  box-shadow: 0 0 20px -5px var(--primary-glow);
+}
+
+.nav-link {
+  position: relative;
+  color: #ffffff;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  transition: all 0.3s ease;
+}
+
+.nav-link:after {
+  content: '';
+  position: absolute;
+  width: 0;
+  height: 2px;
+  bottom: 0;
+  left: 50%;
+  background: linear-gradient(90deg, var(--primary-glow), var(--secondary-glow));
+  transition: all 0.3s ease;
+  transform: translateX(-50%);
+}
+
+.nav-link:hover:after {
+  width: 80%;
+}
+
+.cyber-button {
+  background: linear-gradient(45deg, #00ff95, #ff6b00);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  color: black;
+  font-weight: bold;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.cyber-button:before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: 0.5s;
+}
+
+.cyber-button:hover:before {
+  left: 100%;
+}
+
+.tweet-card {
+  background: rgba(20, 20, 20, 0.8);
+  border: 1px solid rgba(0, 255, 149, 0.1);
+  padding: 1.5rem;
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.tweet-card:hover {
+  border-color: rgba(0, 255, 149, 0.5);
+  box-shadow: 0 0 20px -5px var(--primary-glow);
+  transform: translateY(-2px);
+}
+
+/* Custom styles for 3D viewer */
+.canvas-container {
+  position: relative;
+  width: 100%;
+  height: 500px;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.canvas-container canvas {
+  outline: none;
 }
