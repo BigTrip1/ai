@@ -13,6 +13,20 @@ interface TokenData {
   holders?: number;
   sentiment?: string;
   generatedTweet?: string;
+  events?: string[];
+  narrativeAlignment?: string;
+  timing?: string;
+  categories?: string;
+  riskLevel?: string;
+  analysis?: {
+    nameAnalysis?: {
+      narrativeAlignment?: string;
+    };
+    priceAnalysis?: {
+      current?: string;
+    };
+  };
+  tldr?: string;
 }
 
 export default function TweetPage() {
@@ -25,7 +39,6 @@ export default function TweetPage() {
     setError(null);
     try {
       console.log("[Frontend] Starting token analysis");
-      // Fetch last 5 tokens from database
       const dataResponse = await fetch("/api/tokens/analyze");
       if (!dataResponse.ok) {
         throw new Error("Failed to fetch token data");
@@ -33,26 +46,11 @@ export default function TweetPage() {
       const data = await dataResponse.json();
       console.log("[Frontend] Received token data:", data);
 
-      // Extract tokens from the response structure and ensure it's an array
+      // Extract tokens from the response structure
       let tokens: TokenData[] = [];
-      if (data.success && data.tokenData && data.tokenData.token) {
-        // Extract the token data from the response structure
-        const tokenData = {
-          tokenSymbol: data.tokenData.token.tokenSymbol,
-          tokenName: data.tokenData.token.tokenName,
-          price: data.tokenData.token.price,
-          volume24h: data.tokenData.token.volume24h,
-          marketCap: data.tokenData.token.marketCap,
-          sentiment: data.tokenData.token.sentiment,
-          events: data.tokenData.token.events,
-          narrativeAlignment: data.tokenData.token.narrativeAlignment,
-          timing: data.tokenData.token.timing,
-          categories: data.tokenData.token.categories,
-          riskLevel: data.tokenData.token.riskLevel,
-          analysis: data.tokenData.token.analysis,
-          tldr: data.tokenData.token.tldr,
-        };
-        tokens = [tokenData];
+      if (data.success && data.tokenData) {
+        // Extract the token data directly
+        tokens = [data.tokenData];
       }
       console.log("[Frontend] Processing tokens:", tokens.length, tokens);
 
@@ -61,7 +59,7 @@ export default function TweetPage() {
         tokens.map(async (token: TokenData) => {
           try {
             console.log(
-              "[Frontend] Generating tweet for token:",
+              "[Frontend] Processing token:",
               token.tokenSymbol || "Unknown",
               token
             );
@@ -75,42 +73,101 @@ export default function TweetPage() {
               throw new Error("Invalid token data structure - not an object");
             }
 
-            if (!token.tokenSymbol && !token.tokenName) {
+            // Enhanced data validation
+            const requiredFields = [
+              "tokenSymbol",
+              "tokenName",
+              "price",
+              "volume24h",
+              "marketCap",
+            ] as const;
+            const missingFields = requiredFields.filter(
+              (field) => !token[field as keyof TokenData]
+            );
+            if (missingFields.length > 0) {
               console.error(
-                "[Frontend] Invalid token data - missing identifiers:",
+                `[Frontend] Missing required fields: ${missingFields.join(
+                  ", "
+                )}`,
                 token
               );
               throw new Error(
-                "Invalid token data structure - missing required token identifier"
+                `Missing required fields: ${missingFields.join(", ")}`
               );
             }
+
+            // If we already have tweets from the analysis, use those
+            if (data.tweets && data.tweets.length > 0) {
+              console.log(
+                "[Frontend] Using pre-generated tweets:",
+                data.tweets
+              );
+              return {
+                ...token,
+                generatedTweet: data.tweets[0],
+              };
+            }
+
+            // Otherwise, generate a new tweet
+            console.log(
+              "[Frontend] Generating new tweet with data:",
+              JSON.stringify(token, null, 2)
+            );
 
             const tweetResponse = await fetch("/api/generate-tweet", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify(token),
+              body: JSON.stringify({
+                prompt: `Analyze this token data and provide a tweet under 15 words in the format:
+$${token.tokenSymbol}: Analysis + action?
+
+Token Symbol: ${token.tokenSymbol}
+Token Name: ${token.tokenName}
+Analysis: ${JSON.stringify(token.analysis || {})}
+Summary: ${token.tldr || ""}
+Market Cap: ${token.marketCap ? `$${formatNumber(token.marketCap)}` : "N/A"}
+Price: ${token.price ? `$${token.price.toFixed(8)}` : "N/A"}
+Volume 24h: ${token.volume24h ? `$${formatNumber(token.volume24h)}` : "N/A"}
+Sentiment: ${token.sentiment || "neutral"}
+Events: ${token.events?.join(", ") || "none"}
+
+Keep it cool, no caps for emotion, mix up the final actions like 'ape?', 'fomo?', 'stack?'`,
+                tokenData: token,
+              }),
             });
 
             if (!tweetResponse.ok) {
               const errorData = await tweetResponse.json();
               console.error(
-                `[Frontend] Failed to generate tweet for ${token.tokenSymbol}:`,
-                errorData
+                `[Frontend] Tweet generation failed for ${token.tokenSymbol}:`,
+                {
+                  status: tweetResponse.status,
+                  statusText: tweetResponse.statusText,
+                  error: errorData,
+                }
               );
-              throw new Error(errorData.error || "Failed to generate tweet");
+              throw new Error(
+                errorData.error ||
+                  errorData.details ||
+                  `Failed to generate tweet (Status: ${tweetResponse.status})`
+              );
             }
 
             const tweetData = await tweetResponse.json();
             console.log(
-              "[Frontend] Generated tweet for token:",
+              "[Frontend] Successfully generated tweet for token:",
               token.tokenSymbol,
               tweetData
             );
 
             if (!tweetData.tweet) {
-              throw new Error("No tweet content in response");
+              console.error(
+                "[Frontend] No tweet content in response:",
+                tweetData
+              );
+              throw new Error("API response missing tweet content");
             }
 
             return {
@@ -306,7 +363,10 @@ export default function TweetPage() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-mono">
-                        ${token.price?.toFixed(8) || "0.00000000"}
+                        $
+                        {typeof token.price === "number"
+                          ? token.price.toFixed(8)
+                          : parseFloat(token.price || "0").toFixed(8)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span
@@ -320,10 +380,20 @@ export default function TweetPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right font-mono">
-                        ${formatNumber(token.volume24h || 0)}
+                        $
+                        {formatNumber(
+                          typeof token.volume24h === "number"
+                            ? token.volume24h
+                            : parseFloat(token.volume24h || "0")
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">
-                        ${formatNumber(token.marketCap || 0)}
+                        $
+                        {formatNumber(
+                          typeof token.marketCap === "number"
+                            ? token.marketCap
+                            : parseFloat(token.marketCap || "0")
+                        )}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">
                         {formatNumber(token.holders || 0)}

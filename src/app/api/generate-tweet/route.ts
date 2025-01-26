@@ -7,9 +7,28 @@ export async function POST(request: Request) {
     const { prompt, tokenData } = await request.json();
     const apiKey = process.env.XAI_API_KEY;
 
+    // Validate request data
+    if (!prompt || typeof prompt !== 'string') {
+      console.error("[API] Invalid prompt:", prompt);
+      return NextResponse.json(
+        { error: "Invalid prompt" },
+        { status: 400 }
+      );
+    }
+
+    if (!tokenData || typeof tokenData !== 'object') {
+      console.error("[API] Invalid token data:", tokenData);
+      return NextResponse.json(
+        { error: "Invalid token data" },
+        { status: 400 }
+      );
+    }
+
     console.log(
       "[API] Starting tweet generation for token:",
-      tokenData.tokenSymbol
+      tokenData.tokenSymbol,
+      "with prompt length:",
+      prompt.length
     );
 
     if (!apiKey) {
@@ -27,6 +46,7 @@ export async function POST(request: Request) {
         rejectUnauthorized: false,
         secureProtocol: "TLSv1_2_method",
       }),
+      timeout: 30000, // 30 second timeout
     });
 
     console.log("[API] Sending request to xAI API");
@@ -60,6 +80,11 @@ export async function POST(request: Request) {
       throw new Error("No response from xAI API");
     }
 
+    if (!response.data.choices?.[0]?.message?.content) {
+      console.error("[API] Invalid response format from xAI API:", response.data);
+      throw new Error("Invalid response format from xAI API");
+    }
+
     console.log("[API] Successfully generated tweet");
     const tweet = response.data.choices[0].message.content;
     return NextResponse.json({ tweet });
@@ -70,8 +95,33 @@ export async function POST(request: Request) {
         status: error.response?.status,
         statusText: error.response?.statusText,
         data: error.response?.data,
+        code: error.code,
+        message: error.message,
       });
+
+      // Handle specific error cases
+      if (error.code === 'ECONNABORTED') {
+        return NextResponse.json(
+          { error: "Request timed out", details: "The API request took too long to complete" },
+          { status: 504 }
+        );
+      }
+
+      if (error.response?.status === 401) {
+        return NextResponse.json(
+          { error: "Authentication failed", details: "Invalid or expired API key" },
+          { status: 401 }
+        );
+      }
+
+      if (error.response?.status === 429) {
+        return NextResponse.json(
+          { error: "Rate limit exceeded", details: "Too many requests" },
+          { status: 429 }
+        );
+      }
     }
+
     return NextResponse.json(
       {
         error: "Failed to generate tweet",

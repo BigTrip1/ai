@@ -7,7 +7,7 @@ import { NextResponse } from "next/server";
 import { AIAgent } from "@/lib/agent/AIAgent";
 import { defaultCharacterState } from "@/config/agent.config";
 
-export async function POST(request: Request) {
+export async function handler(request: Request) {
   try {
     const xaiApiKey = process.env.XAI_API_KEY;
     if (!xaiApiKey) {
@@ -35,46 +35,41 @@ export async function POST(request: Request) {
       characterConfig: defaultCharacterState,
     });
 
-    try {
-      const result = await agent.analyzeAndTweetTokens(1);
-      return NextResponse.json({
-        success: true,
-        tokenData: {
-          ...result,
-          tweets: result.tweets || [], // Ensure tweets is always an array
+    const result = await agent.analyzeAndTweetTokens(1);
+    
+    // Ensure we have valid token data
+    if (!result.success || !result.token) {
+      console.error("[API] No valid token data returned:", result);
+      return NextResponse.json(
+        {
+          success: false,
+          message: result.message || "No valid token data found",
+          tokenData: null,
         },
-      });
-    } catch (analyzeError) {
-      console.error("Error analyzing tokens:", analyzeError);
-      // If we get token data but tweet generation fails, return what we have
-      if (analyzeError.token) {
-        return NextResponse.json({
-          success: true,
-          tokenData: {
-            ...analyzeError,
-            tweets: [], // Provide empty array for tweets if generation failed
-          },
-        });
-      }
-      throw analyzeError; // Re-throw if we don't have any token data
+        { status: 404 }
+      );
     }
+
+    // Return a properly structured response
+    return NextResponse.json({
+      success: true,
+      tokenData: result.token,
+      tweets: result.tweets || [],
+      message: result.message,
+    });
   } catch (error) {
-    console.error("Error in token analysis endpoint:", error);
+    console.error("[API] Error in token analysis endpoint:", error);
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error ? error.message : "Error analyzing tokens",
-        tokenData: {
-          token: null,
-          tweets: [], // Always include an empty array for tweets
-        },
+        message: error instanceof Error ? error.message : "Error analyzing tokens",
+        tokenData: null,
+        tweets: [],
       },
       { status: 500 }
     );
   }
 }
 
-export async function GET(request: Request) {
-  return POST(request);
-}
+export const GET = handler;
+export const POST = handler;
